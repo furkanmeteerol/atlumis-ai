@@ -1,7 +1,11 @@
+import logging
 import os
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -10,15 +14,38 @@ api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY is not configured.")
 
-client = genai.Client(api_key=api_key)
+client = genai.Client(
+    api_key=api_key,
+    http_options=types.HttpOptions(
+        timeout=30000,
+        retry_options=types.HttpRetryOptions(
+            attempts=3,
+            initial_delay=1.0,
+            max_delay=4.0,
+            exp_base=2.0,
+            http_status_codes=[408, 429, 500, 502, 503, 504]
+        )
+    )
+)
 
 MODEL_NAME = "gemini-3.5-flash-lite"
 
 
 def generate_response(prompt: str) -> str:
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt
-    )
+    logger.info("Gemini request started")
 
-    return response.text or ""
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt
+        )
+
+        answer = response.text or ""
+
+        logger.info("Gemini response received successfully")
+
+        return answer
+
+    except Exception:
+        logger.exception("Gemini request failed")
+        raise

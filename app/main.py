@@ -1,6 +1,13 @@
-from fastapi import FastAPI
-from app.schemas.chat import ChatRequest
+from fastapi import FastAPI, HTTPException
+from google.genai import errors
+from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.gemini import generate_response
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 app = FastAPI(
     title="Atlumis AI",
@@ -23,12 +30,31 @@ def health_check():
         "application": "Atlumis AI"
     }
 
-@app.post("/api/v1/chat")
+@app.post("/api/v1/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    answer = generate_response(request.message)
+    try:
+        answer = generate_response(request.message)
 
-    return {
-        "question": request.message,
-        "answer": answer,
-        "model": "gemini-3.5-flash-lite"
-    }
+        return ChatResponse(
+            question=request.message,
+            answer=answer,
+            model="gemini-3.5-flash-lite"
+        )
+
+    except errors.APIError as exc:
+        if exc.code == 503:
+            raise HTTPException(
+                status_code=503,
+                detail="AI service is temporarily unavailable."
+            ) from exc
+
+        raise HTTPException(
+            status_code=502,
+            detail="AI provider returned an error."
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred."
+        ) from exc

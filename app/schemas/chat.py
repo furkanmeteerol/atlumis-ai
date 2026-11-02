@@ -7,3 +7,9 @@ class ChatRequest(BaseModel):
         max_length=4000,
         description="User message sent to the AI assistant"
     )
+
+
+class ChatResponse(BaseModel):
+    question: str
+    answer: str
+    model: str
