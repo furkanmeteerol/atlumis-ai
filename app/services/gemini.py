@@ -1,3 +1,4 @@
+
 import logging
 import os
 
@@ -5,7 +6,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-logger = logging.getLogger(__name__)
+from app.services.conversation import MessageData
 
 load_dotenv()
 
@@ -30,14 +31,26 @@ client = genai.Client(
 
 MODEL_NAME = "gemini-3.5-flash-lite"
 
+logger = logging.getLogger(__name__)
 
-def generate_response(prompt: str) -> str:
+
+def generate_response(history: list[MessageData]) -> str:
     logger.info("Gemini request started")
+
+    contents = [
+        types.Content(
+            role=message["role"],
+            parts=[
+                types.Part.from_text(text=message["content"])
+            ]
+        )
+        for message in history
+    ]
 
     try:
         response = client.models.generate_content(
             model=MODEL_NAME,
-            contents=prompt
+            contents=contents
         )
 
         answer = response.text or ""

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -8,8 +10,14 @@ class ChatRequest(BaseModel):
         description="User message sent to the AI assistant"
     )
 
+    conversation_id: UUID | None = Field(
+        default=None,
+        description="ID of an existing conversation"
+    )
+
 
 class ChatResponse(BaseModel):
+    conversation_id: UUID
     question: str
     answer: str
     model: str

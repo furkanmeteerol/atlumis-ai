@@ -1,8 +1,14 @@
-from fastapi import FastAPI, HTTPException
-from google.genai import errors
-from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.gemini import generate_response
 import logging
+from uuid import uuid4
+
+from fastapi import Depends, FastAPI, HTTPException
+from google.genai import errors
+from sqlalchemy.orm import Session
+
+from app.database.connection import get_db
+from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.gemini import generate_response, MODEL_NAME
+from app.services.conversation import get_history, save_turn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +29,7 @@ def root():
         "status": "running"
     }
 
+
 @app.get("/health")
 def health_check():
     return {
@@ -30,15 +37,38 @@ def health_check():
         "application": "Atlumis AI"
     }
 
+
 @app.post("/api/v1/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+):
+    conversation_id = request.conversation_id or uuid4()
+
     try:
-        answer = generate_response(request.message)
+        history = get_history(db, conversation_id)
+
+        history_with_new_message = history + [
+            {
+                "role": "user",
+                "content": request.message
+            }
+        ]
+
+        answer = generate_response(history_with_new_message)
+
+        save_turn(
+            db=db,
+            conversation_id=conversation_id,
+            question=request.message,
+            answer=answer
+        )
 
         return ChatResponse(
+            conversation_id=conversation_id,
             question=request.message,
             answer=answer,
-            model="gemini-3.5-flash-lite"
+            model=MODEL_NAME
         )
 
     except errors.APIError as exc:
@@ -54,6 +84,8 @@ def chat(request: ChatRequest):
         ) from exc
 
     except Exception as exc:
+        logging.exception("Chat endpoint failed")
+
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred."

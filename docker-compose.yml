@@ -1,0 +1,17 @@
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: atlumis-ai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atlumis_ai
+      POSTGRES_USER: atlumis
+      POSTGRES_PASSWORD: atlumis_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+volumes:
+  postgres_data:
