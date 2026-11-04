@@ -78,6 +78,12 @@ def chat(
                 detail="AI service is temporarily unavailable."
             ) from exc
 
+        if exc.code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="AI service rate limit exceeded."
+            ) from exc
+
         raise HTTPException(
             status_code=502,
             detail="AI provider returned an error."
