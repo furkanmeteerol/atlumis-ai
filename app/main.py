@@ -1,7 +1,7 @@
 import logging
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File
 from google.genai import errors
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,12 @@ from app.database.connection import get_db
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.gemini import generate_response, MODEL_NAME
 from app.services.conversation import get_history, save_turn
+
+from app.services.document import (
+    validate_document,
+    DocumentValidationError,
+    MAX_FILE_SIZE
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +26,6 @@ app = FastAPI(
     description="Enterprise AI Assistant Platform",
     version="0.1.0"
 )
-
 
 @app.get("/")
 def root():
@@ -37,6 +42,35 @@ def health_check():
         "application": "Atlumis AI"
     }
 
+@app.post("/api/v1/documents/upload")
+async def upload_document(file: UploadFile = File(...)):
+
+    filename = file.filename or ""
+
+    try:
+        content = await file.read(MAX_FILE_SIZE + 1)
+
+        validate_document(
+            filename=filename,
+            content_type=file.content_type,
+            content=content
+        )
+
+        return {
+            "filename": filename,
+            "content_type": file.content_type,
+            "size": len(content),
+            "message": "File uploaded and validated successfully."
+        }
+
+    except DocumentValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        ) from exc
+
+    finally:
+        await file.close()
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
 def chat(
