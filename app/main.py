@@ -9,12 +9,12 @@ from app.database.connection import get_db
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.gemini import generate_response, MODEL_NAME
 from app.services.conversation import get_history, save_turn
-
+from app.schemas.document import DocumentResponse
 from app.services.document import (
-    validate_document,
-    DocumentValidationError,
-    MAX_FILE_SIZE
+    create_document,
+    DocumentValidationError
 )
+from app.storage.local import LocalStorage
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,26 +42,31 @@ def health_check():
         "application": "Atlumis AI"
     }
 
-@app.post("/api/v1/documents/upload")
-async def upload_document(file: UploadFile = File(...)):
 
+storage = LocalStorage()
+
+@app.post(
+    "/api/v1/documents/upload",
+    response_model=DocumentResponse
+)
+async def upload_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
     filename = file.filename or ""
 
     try:
-        content = await file.read(MAX_FILE_SIZE + 1)
+        content = await file.read(10 * 1024 * 1024 + 1)
 
-        validate_document(
+        document = create_document(
+            db=db,
+            storage=storage,
             filename=filename,
             content_type=file.content_type,
             content=content
         )
 
-        return {
-            "filename": filename,
-            "content_type": file.content_type,
-            "size": len(content),
-            "message": "File uploaded and validated successfully."
-        }
+        return document
 
     except DocumentValidationError as exc:
         raise HTTPException(
@@ -69,8 +74,16 @@ async def upload_document(file: UploadFile = File(...)):
             detail=str(exc)
         ) from exc
 
+    except Exception as exc:
+        logging.exception("Document upload failed")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred."
+        ) from exc
+
     finally:
         await file.close()
+
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
 def chat(

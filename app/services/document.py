@@ -1,4 +1,11 @@
+import logging
 from pathlib import Path
+from uuid import uuid4
+
+from sqlalchemy.orm import Session
+
+from app.database.models import Document
+from app.storage.local import LocalStorage
 
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -54,3 +61,54 @@ def validate_document(
             raise DocumentValidationError(
                 "TXT file must use UTF-8 encoding."
             ) from exc
+
+def create_document(
+    db: Session,
+    storage: LocalStorage,
+    filename: str,
+    content_type: str | None,
+    content: bytes
+    ) -> Document:
+
+    validate_document(
+        filename=filename,
+        content_type=content_type,
+        content=content
+    )
+
+    document_id = uuid4()
+    extension = Path(filename).suffix.lower()
+
+    storage_key = storage.save(
+        document_id=document_id,
+        extension=extension,
+        content=content
+    )
+
+    document = Document(
+        id=document_id,
+        filename=filename,
+        storage_key=storage_key,
+        content_type=content_type,
+        file_size=len(content),
+        status="uploaded"
+    )
+
+    try:
+        db.add(document)
+        db.commit()
+
+        return document
+
+    except Exception:
+        db.rollback()
+
+        try:
+            storage.delete(storage_key)
+        except Exception:
+            logging.exception(
+                "Failed to delete stored file after database error: %s",
+                storage_key
+            )
+
+        raise
